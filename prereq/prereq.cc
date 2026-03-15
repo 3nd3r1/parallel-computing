@@ -1,3 +1,4 @@
+#include <cstdio>
 struct Result {
     float avg[3];
 };
@@ -15,6 +16,18 @@ This is the function you need to implement. Quick reference:
 Result calculate(int ny, int nx, const float *data, int y0, int x0, int y1,
                  int x1) {
 
-    Result result{{0.0f, 0.0f, 0.0f}};
+    double avg[3] = {0, 0, 0};
+    for (int y = y0; y < y1; y++) {
+        for (int x = x0; x < x1; x++) {
+            avg[0] += data[0 + 3 * x + 3 * nx * y];
+            avg[1] += data[1 + 3 * x + 3 * nx * y];
+            avg[2] += data[2 + 3 * x + 3 * nx * y];
+        }
+    }
+
+    int cnt = (y1 - y0) * (x1 - x0);
+
+    Result result = Result{
+        {(float)(avg[0] / cnt), (float)(avg[1] / cnt), (float)(avg[2] / cnt)}};
     return result;
 }
