@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <omp.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <vector>
 
@@ -15,8 +14,8 @@ This is the function you need to implement. Quick reference:
   max(x-hx, 0) <= a < min(x+hx+1, nx), max(y-hy, 0) <= b < min(y+hy+1, ny)
   in out[x + y*nx].
 */
-#pragma omp parallel for
 void mf(int ny, int nx, int hy, int hx, const float *in, float *out) {
+    #pragma omp parallel for
     for (int y = 0; y < ny; y++) {
         for (int x = 0; x < nx; x++) {
             vector<float> vals;
