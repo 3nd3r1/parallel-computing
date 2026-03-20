@@ -30,11 +30,20 @@ void correlate(int ny, int nx, const float *data, float *result) {
 
     for (int j = 0; j < ny; j++) {
         for (int i = j; i < ny; i++) {
-            double val = 0;
-            for (int k = 0; k < nx; k++) {
-                val += matrix[k + i * nx] * matrix[k + j * nx];
+            double v0 = 0, v1 = 0, v2 = 0, v3 = 0;
+
+            for (int k = 0; k + 3 < nx; k += 4) {
+                v0 += matrix[k + i * nx] * matrix[k + j * nx];
+                v1 += matrix[k + 1 + i * nx] * matrix[k + 1 + j * nx];
+                v2 += matrix[k + 2 + i * nx] * matrix[k + 2 + j * nx];
+                v3 += matrix[k + 3 + i * nx] * matrix[k + 3 + j * nx];
             }
-            result[i + j * ny] = (float)val;
+
+            for (int k = nx - (nx % 4); k < nx; k++) {
+                v0 += matrix[k + i * nx] * matrix[k + j * nx];
+            }
+
+            result[i + j * ny] = (float)((v0 + v1) + (v2 + v3));
         }
     }
 }
