@@ -12,20 +12,21 @@ This is the function you need to implement. Quick reference:
 void correlate(int ny, int nx, const float *data, float *result) {
     std::vector<std::vector<double>> matrix(ny, std::vector<double>(nx, 0.0));
     for (int y = 0; y < ny; y++) {
-        double avg = 0;
+        double sum = 0;
         for (int x = 0; x < nx; x++) {
-            matrix[y][x] = data[x + y * nx];
-            avg += matrix[y][x];
+            sum += data[x + y * nx];
         }
-        avg /= nx;
-        double mag = 0;
+
+        double sum_sq = 0;
         for (int x = 0; x < nx; x++) {
-            matrix[y][x] -= avg;
-            mag += matrix[y][x] * matrix[y][x];
+            sum_sq += (double)data[x + y * nx] * (double)data[x + y * nx];
         }
-        mag = std::sqrt(mag);
+
+        double avg = sum / nx;
+        double mag = std::sqrt(sum_sq - nx * avg * avg);
+
         for (int x = 0; x < nx; x++) {
-            matrix[y][x] /= mag;
+            matrix[y][x] = (data[x + y * nx] - avg) / mag;
         }
     }
 
