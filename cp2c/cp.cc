@@ -43,10 +43,10 @@ void correlate(int ny, int nx, const float *data, float *result) {
             double4_t val = {0, 0, 0, 0};
             for (int k = 0; k + 3 < nx; k += 4) {
                 double4_t mi, mj;
-                mi = {matrix[i][k], matrix[i][k + 1], matrix[i][k + 2],
-                      matrix[i][k + 3]};
-                mj = {matrix[j][k], matrix[j][k + 1], matrix[j][k + 2],
-                      matrix[j][k + 3]};
+                mi = (double4_t){matrix[i][k], matrix[i][k + 1],
+                                 matrix[i][k + 2], matrix[i][k + 3]};
+                mj = (double4_t){matrix[j][k], matrix[j][k + 1],
+                                 matrix[j][k + 2], matrix[j][k + 3]};
 
                 val += matrix[i][k] * matrix[j][k];
             }
