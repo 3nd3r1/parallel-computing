@@ -31,7 +31,7 @@ void correlate(int ny, int nx, const float *data, float *result) {
         }
     }
 
-#pragma omp parallel for
+#pragma omp parallel for schedule(dynamic)
     for (int j = 0; j < ny; j++) {
         for (int i = j; i < ny; i++) {
             double val = 0;
