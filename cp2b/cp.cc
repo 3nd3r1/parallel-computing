@@ -1,4 +1,5 @@
 #include <cmath>
+#include <omp.h>
 #include <vector>
 
 /*
@@ -11,6 +12,7 @@ This is the function you need to implement. Quick reference:
 */
 void correlate(int ny, int nx, const float *data, float *result) {
     std::vector<std::vector<double>> matrix(ny, std::vector<double>(nx, 0.0));
+#pragma omp parallel for
     for (int y = 0; y < ny; y++) {
         double avg = 0;
         for (int x = 0; x < nx; x++) {
@@ -29,6 +31,7 @@ void correlate(int ny, int nx, const float *data, float *result) {
         }
     }
 
+#pragma omp parallel for
     for (int j = 0; j < ny; j++) {
         for (int i = j; i < ny; i++) {
             double val = 0;
