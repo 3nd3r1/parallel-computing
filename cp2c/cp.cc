@@ -26,7 +26,7 @@ void correlate(int ny, int nx, const float *data, float *result) {
         }
         for (int x = nx - (nx % 4); x < nx; x++) {
             sum[0] += data[x + y * nx];
-            sum_sq[0] += data[x + y * nx] * data[x + y * nx];
+            sum_sq[0] += (double)data[x + y * nx] * (double)data[x + y * nx];
         }
 
         double avg = (sum[0] + sum[1] + sum[2] + sum[3]) / nx;
@@ -42,13 +42,12 @@ void correlate(int ny, int nx, const float *data, float *result) {
         for (int i = j; i < ny; i++) {
             double4_t val = {0, 0, 0, 0};
             for (int k = 0; k + 3 < nx; k += 4) {
-                double4_t mi, mj;
-                mi = (double4_t){matrix[i][k], matrix[i][k + 1],
-                                 matrix[i][k + 2], matrix[i][k + 3]};
-                mj = (double4_t){matrix[j][k], matrix[j][k + 1],
-                                 matrix[j][k + 2], matrix[j][k + 3]};
+                double4_t mi = {matrix[i][k], matrix[i][k + 1],
+                                matrix[i][k + 2], matrix[i][k + 3]};
+                double4_t mj = {matrix[j][k], matrix[j][k + 1],
+                                matrix[j][k + 2], matrix[j][k + 3]};
 
-                val += matrix[i][k] * matrix[j][k];
+                val += mi * mj;
             }
 
             for (int k = nx - (nx % 4); k < nx; k++) {
