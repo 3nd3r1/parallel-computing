@@ -15,9 +15,14 @@ This is the function you need to implement. Quick reference:
 - only parts with 0 <= j <= i < ny need to be filled
 */
 void correlate(int ny, int nx, const float *data, float *result) {
-    constexpr int nb = 4;
-    int nxv = (nx + nb - 1) / nb;
-    vector<double4_t> matrix(ny * nxv);
+    constexpr int vec_size = 4; // Number of elements per vector
+    int nx_vecs = (nx + vec_size - 1) / vec_size; // Number of vectors per row
+
+    constexpr int block_size = 3;                      // Block size
+    int n_blocks = (ny + block_size - 1) / block_size; // Number of blocks
+    int padded_ny = n_blocks * block_size;             // padded ny
+
+    vector<double4_t> matrix(padded_ny * nx_vecs);
 
 #pragma omp parallel for
     for (int y = 0; y < ny; y++) {
@@ -40,24 +45,50 @@ void correlate(int ny, int nx, const float *data, float *result) {
         double mag = std::sqrt((sum_sq[0] + sum_sq[1] + sum_sq[2] + sum_sq[3]) -
                                nx * avg * avg);
 
-        for (int x = 0; x < nxv; x++) {
-            for (int k = 0; k < nb; k++) {
-                int i = x * nb + k;
-                matrix[x + y * nxv][k] =
+        for (int x = 0; x < nx_vecs; x++) {
+            for (int k = 0; k < vec_size; k++) {
+                int i = x * vec_size + k;
+                matrix[x + y * nx_vecs][k] =
                     i < nx ? (data[i + y * nx] - avg) / mag : 0;
             }
         }
     }
 
 #pragma omp parallel for schedule(dynamic)
-    for (int j = 0; j < ny; j++) {
-        for (int i = j; i < ny; i++) {
-            double4_t val = {0, 0, 0, 0};
-            for (int k = 0; k < nxv; k += 1) {
-                val += matrix[k + i * nxv] * matrix[k + j * nxv];
+    for (int j = 0; j < n_blocks; j++) {
+        for (int i = j; i < n_blocks; i++) {
+            double4_t val[block_size][block_size];
+
+            for (int k = 0; k < nx_vecs; k += 1) {
+                double4_t j0 = matrix[k + nx_vecs * (j * block_size + 0)];
+                double4_t j1 = matrix[k + nx_vecs * (j * block_size + 1)];
+                double4_t j2 = matrix[k + nx_vecs * (j * block_size + 2)];
+                double4_t i0 = matrix[k + nx_vecs * (i * block_size + 0)];
+                double4_t i1 = matrix[k + nx_vecs * (i * block_size + 1)];
+                double4_t i2 = matrix[k + nx_vecs * (i * block_size + 2)];
+
+                val[0][0] += j0 * i0;
+                val[0][1] += j0 * i1;
+                val[0][2] += j0 * i2;
+                val[1][0] += j1 * i0;
+                val[1][1] += j1 * i1;
+                val[1][2] += j1 * i2;
+                val[2][0] += j2 * i0;
+                val[2][1] += j2 * i1;
+                val[2][2] += j2 * i2;
             }
 
-            result[i + j * ny] = (float)((val[0] + val[1]) + (val[2] + val[3]));
+            for (int bj = 0; bj < block_size; bj++) {
+                for (int bi = 0; bi < block_size; bi++) {
+                    int rj = j * block_size + bj;
+                    int ri = i * block_size + bi;
+                    if (rj < ny && ri < ny) {
+                        result[ri + rj * ny] =
+                            (float)((val[bj][bi][0] + val[bj][bi][1]) +
+                                    (val[bj][bi][2] + val[bj][bi][3]));
+                    }
+                }
+            }
         }
     }
 }
