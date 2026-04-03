@@ -57,7 +57,7 @@ void correlate(int ny, int nx, const float *data, float *result) {
 #pragma omp parallel for schedule(dynamic)
     for (int i = 0; i < n_blocks; i++) {
         for (int j = i; j < n_blocks; j++) {
-            double4_t val[block_size][block_size];
+            double4_t val[block_size][block_size] = {};
 
             for (int k = 0; k < nx_vecs; k++) {
                 double4_t i0 = matrix[k + nx_vecs * (i * block_size + 0)];
@@ -84,8 +84,8 @@ void correlate(int ny, int nx, const float *data, float *result) {
                     int rj = j * block_size + bj;
                     if (ri < ny && rj < ny) {
                         result[rj + ri * ny] =
-                            (float)((val[bj][bi][0] + val[bj][bi][1]) +
-                                    (val[bj][bi][2] + val[bj][bi][3]));
+                            (float)((val[bi][bj][0] + val[bi][bj][1]) +
+                                    (val[bi][bj][2] + val[bi][bj][3]));
                     }
                 }
             }
