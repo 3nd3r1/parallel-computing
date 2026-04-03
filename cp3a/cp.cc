@@ -32,7 +32,6 @@ void correlate(int ny, int nx, const float *data, float *result) {
         for (int x = 0; x + 3 < nx; x += 4) {
             double4_t drow = {data[x + y * nx], data[x + 1 + y * nx],
                               data[x + 2 + y * nx], data[x + 3 + y * nx]};
-
             sum += drow;
             sum_sq += drow * drow;
         }
@@ -45,12 +44,20 @@ void correlate(int ny, int nx, const float *data, float *result) {
         double mag = std::sqrt((sum_sq[0] + sum_sq[1] + sum_sq[2] + sum_sq[3]) -
                                nx * avg * avg);
 
-        for (int x = 0; x < nx_vecs; x++) {
-            for (int k = 0; k < vec_size; k++) {
-                int i = x * vec_size + k;
-                matrix[x + y * nx_vecs][k] =
-                    i < nx ? (data[i + y * nx] - avg) / mag : 0;
-            }
+        double4_t avg4 = {avg, avg, avg, avg};
+        double4_t mag4 = {mag, mag, mag, mag};
+
+        for (int x = 0; x < nx / vec_size; x++) {
+            double4_t drow = {data[x * vec_size + y * nx],
+                              data[x * vec_size + 1 + y * nx],
+                              data[x * vec_size + 2 + y * nx],
+                              data[x * vec_size + 3 + y * nx]};
+            matrix[x + y * nx_vecs] = (drow - avg4) / mag4;
+        }
+
+        for (int k = 0; k < nx % vec_size; k++) {
+            matrix[(nx / vec_size) + y * nx_vecs][k] =
+                (data[(nx / vec_size) * vec_size + k + y * nx] - avg) / mag;
         }
     }
 
