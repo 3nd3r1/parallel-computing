@@ -54,7 +54,7 @@ void correlate(int ny, int nx, const float *data, float *result) {
         }
     }
 
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for
     for (int i = 0; i < n_blocks; i++) {
         for (int j = i; j < n_blocks; j++) {
             double4_t val[block_size][block_size] = {};
