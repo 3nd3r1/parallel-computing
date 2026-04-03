@@ -15,7 +15,9 @@ This is the function you need to implement. Quick reference:
 - only parts with 0 <= j <= i < ny need to be filled
 */
 void correlate(int ny, int nx, const float *data, float *result) {
-    vector<double> matrix(nx * ny, 0.0);
+    constexpr int nb = 4;
+    int nxv = (nx + nb - 1) / nb;
+    vector<double4_t> matrix(ny * nxv);
 
 #pragma omp parallel for
     for (int y = 0; y < ny; y++) {
@@ -38,8 +40,12 @@ void correlate(int ny, int nx, const float *data, float *result) {
         double mag = std::sqrt((sum_sq[0] + sum_sq[1] + sum_sq[2] + sum_sq[3]) -
                                nx * avg * avg);
 
-        for (int x = 0; x < nx; x++) {
-            matrix[x + y * nx] = (data[x + y * nx] - avg) / mag;
+        for (int x = 0; x < nxv; x++) {
+            for (int k = 0; k < nb; k++) {
+                int i = x * nb + k;
+                matrix[x + y * nxv][k] =
+                    i < nx ? (data[i + y * nx] - avg) / mag : 0;
+            }
         }
     }
 
@@ -47,17 +53,8 @@ void correlate(int ny, int nx, const float *data, float *result) {
     for (int j = 0; j < ny; j++) {
         for (int i = j; i < ny; i++) {
             double4_t val = {0, 0, 0, 0};
-            for (int k = 0; k + 3 < nx; k += 4) {
-                double4_t mi = {matrix[k + i * nx], matrix[k + 1 + i * nx],
-                                matrix[k + 2 + i * nx], matrix[k + 3 + i * nx]};
-                double4_t mj = {matrix[k + j * nx], matrix[k + 1 + j * nx],
-                                matrix[k + 2 + j * nx], matrix[k + 3 + j * nx]};
-
-                val += mi * mj;
-            }
-
-            for (int k = nx - (nx % 4); k < nx; k++) {
-                val[0] += matrix[k + i * nx] * matrix[k + j * nx];
+            for (int k = 0; k < nxv; k += 1) {
+                val += matrix[k + i * nxv] * matrix[k + j * nxv];
             }
 
             result[i + j * ny] = (float)((val[0] + val[1]) + (val[2] + val[3]));
