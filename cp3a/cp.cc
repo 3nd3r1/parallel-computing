@@ -55,35 +55,35 @@ void correlate(int ny, int nx, const float *data, float *result) {
     }
 
 #pragma omp parallel for schedule(dynamic)
-    for (int j = 0; j < n_blocks; j++) {
-        for (int i = j; i < n_blocks; i++) {
+    for (int i = 0; i < n_blocks; i++) {
+        for (int j = i; j < n_blocks; j++) {
             double4_t val[block_size][block_size];
 
-            for (int k = 0; k < nx_vecs; k += 1) {
-                double4_t j0 = matrix[k + nx_vecs * (j * block_size + 0)];
-                double4_t j1 = matrix[k + nx_vecs * (j * block_size + 1)];
-                double4_t j2 = matrix[k + nx_vecs * (j * block_size + 2)];
+            for (int k = 0; k < nx_vecs; k++) {
                 double4_t i0 = matrix[k + nx_vecs * (i * block_size + 0)];
                 double4_t i1 = matrix[k + nx_vecs * (i * block_size + 1)];
                 double4_t i2 = matrix[k + nx_vecs * (i * block_size + 2)];
+                double4_t j0 = matrix[k + nx_vecs * (j * block_size + 0)];
+                double4_t j1 = matrix[k + nx_vecs * (j * block_size + 1)];
+                double4_t j2 = matrix[k + nx_vecs * (j * block_size + 2)];
 
-                val[0][0] += j0 * i0;
-                val[0][1] += j0 * i1;
-                val[0][2] += j0 * i2;
-                val[1][0] += j1 * i0;
-                val[1][1] += j1 * i1;
-                val[1][2] += j1 * i2;
-                val[2][0] += j2 * i0;
-                val[2][1] += j2 * i1;
-                val[2][2] += j2 * i2;
+                val[0][0] += i0 * j0;
+                val[0][1] += i0 * j1;
+                val[0][2] += i0 * j2;
+                val[1][0] += i1 * j0;
+                val[1][1] += i1 * j1;
+                val[1][2] += i1 * j2;
+                val[2][0] += i2 * j0;
+                val[2][1] += i2 * j1;
+                val[2][2] += i2 * j2;
             }
 
-            for (int bj = 0; bj < block_size; bj++) {
-                for (int bi = 0; bi < block_size; bi++) {
-                    int rj = j * block_size + bj;
+            for (int bi = 0; bi < block_size; bi++) {
+                for (int bj = 0; bj < block_size; bj++) {
                     int ri = i * block_size + bi;
-                    if (rj < ny && ri < ny) {
-                        result[ri + rj * ny] =
+                    int rj = j * block_size + bj;
+                    if (ri < ny && rj < ny) {
+                        result[rj + ri * ny] =
                             (float)((val[bj][bi][0] + val[bj][bi][1]) +
                                     (val[bj][bi][2] + val[bj][bi][3]));
                     }
