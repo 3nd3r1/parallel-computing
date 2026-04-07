@@ -29,15 +29,21 @@ void correlate(int ny, int nx, const float *data, float *result) {
         double4_t sum = {0, 0, 0, 0};
         double4_t sum_sq = {0, 0, 0, 0};
 
-        for (int x = 0; x + 3 < nx; x += 4) {
-            double4_t drow = {data[x + y * nx], data[x + 1 + y * nx],
-                              data[x + 2 + y * nx], data[x + 3 + y * nx]};
+        for (int x = 0; x < nx / vec_size; x++) {
+            double4_t drow = {data[x * vec_size + 0 + y * nx],
+                              data[x * vec_size + 1 + y * nx],
+                              data[x * vec_size + 2 + y * nx],
+                              data[x * vec_size + 3 + y * nx]};
             sum += drow;
             sum_sq += drow * drow;
+            matrix[x + y * nx_vecs] = drow;
         }
-        for (int x = nx - (nx % 4); x < nx; x++) {
-            sum[0] += data[x + y * nx];
-            sum_sq[0] += (double)data[x + y * nx] * (double)data[x + y * nx];
+        for (int k = 0; k < nx % vec_size; k++) {
+            sum[0] += data[(nx / vec_size) * vec_size + k + y * nx];
+            sum_sq[0] += (double)data[(nx / vec_size) * vec_size + k + y * nx] *
+                         (double)data[(nx / vec_size) * vec_size + k + y * nx];
+            matrix[(nx / vec_size) + y * nx_vecs][k] =
+                (data[(nx / vec_size) * vec_size + k + y * nx]);
         }
 
         double avg = (sum[0] + sum[1] + sum[2] + sum[3]) / nx;
@@ -48,16 +54,11 @@ void correlate(int ny, int nx, const float *data, float *result) {
         double4_t mag4 = {mag, mag, mag, mag};
 
         for (int x = 0; x < nx / vec_size; x++) {
-            double4_t drow = {data[x * vec_size + y * nx],
-                              data[x * vec_size + 1 + y * nx],
-                              data[x * vec_size + 2 + y * nx],
-                              data[x * vec_size + 3 + y * nx]};
-            matrix[x + y * nx_vecs] = (drow - avg4) / mag4;
+            matrix[x + y * nx_vecs] = (matrix[x + y * nx_vecs] - avg4) / mag4;
         }
-
         for (int k = 0; k < nx % vec_size; k++) {
             matrix[(nx / vec_size) + y * nx_vecs][k] =
-                (data[(nx / vec_size) * vec_size + k + y * nx] - avg) / mag;
+                (matrix[(nx / vec_size) + y * nx_vecs][k] - avg) / mag;
         }
     }
 
