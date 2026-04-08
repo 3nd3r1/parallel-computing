@@ -27,7 +27,7 @@ void correlate(int ny, int nx, const float *data, float *result) {
 #pragma omp parallel for
     for (int y = 0; y < ny; y++) {
         float8_t sum = {0, 0, 0, 0, 0, 0, 0, 0};
-        float8_t sum_sq = {0, 0, 0, 0, 0, 0, 0, 0};
+
         for (int x = 0; x < nx / vec_size; x++) {
             float8_t row = {
                 data[x * vec_size + 0 + y * nx],
@@ -40,30 +40,37 @@ void correlate(int ny, int nx, const float *data, float *result) {
                 data[x * vec_size + 7 + y * nx],
             };
             sum += row;
-            sum_sq += row * row;
             matrix[x + y * nx_vecs] = row;
         }
         for (int k = 0; k < nx % vec_size; k++) {
             sum[0] += data[(nx / vec_size) * vec_size + k + y * nx];
-            sum_sq[0] += data[(nx / vec_size) * vec_size + k + y * nx] *
-                         data[(nx / vec_size) * vec_size + k + y * nx];
             matrix[(nx / vec_size) + y * nx_vecs][k] =
                 data[(nx / vec_size) * vec_size + k + y * nx];
         }
         float avg = (sum[0] + sum[1] + sum[2] + sum[3] + sum[4] + sum[5] +
                      sum[6] + sum[7]) /
                     nx;
-        float mag = std::sqrt((sum_sq[0] + sum_sq[1] + sum_sq[2] + sum_sq[3] +
-                               sum_sq[4] + sum_sq[5] + sum_sq[6] + sum_sq[7]) -
-                              nx * avg * avg);
         float8_t avg8 = {avg, avg, avg, avg, avg, avg, avg, avg};
-        float8_t mag8 = {mag, mag, mag, mag, mag, mag, mag, mag};
+
+        float8_t sum_sq = {0, 0, 0, 0, 0, 0, 0, 0};
         for (int x = 0; x < nx / vec_size; x++) {
-            matrix[x + y * nx_vecs] = (matrix[x + y * nx_vecs] - avg8) / mag8;
+            matrix[x + y * nx_vecs] -= avg8;
+            sum_sq += matrix[x + y * nx_vecs] * matrix[x + y * nx_vecs];
         }
         for (int k = 0; k < nx % vec_size; k++) {
-            matrix[(nx / vec_size) + y * nx_vecs][k] =
-                (matrix[(nx / vec_size) + y * nx_vecs][k] - avg) / mag;
+            matrix[(nx / vec_size) + y * nx_vecs][k] -= avg;
+            sum_sq[0] += matrix[(nx / vec_size) + y * nx_vecs][k] *
+                         matrix[(nx / vec_size) + y * nx_vecs][k];
+        }
+        float mag = std::sqrt(sum_sq[0] + sum_sq[1] + sum_sq[2] + sum_sq[3] +
+                              sum_sq[4] + sum_sq[5] + sum_sq[6] + sum_sq[7]);
+        float8_t mag8 = {mag, mag, mag, mag, mag, mag, mag, mag};
+
+        for (int x = 0; x < nx / vec_size; x++) {
+            matrix[x + y * nx_vecs] /= mag8;
+        }
+        for (int k = 0; k < nx % vec_size; k++) {
+            matrix[(nx / vec_size) + y * nx_vecs][k] /= mag;
         }
     }
 
