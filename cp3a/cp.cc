@@ -26,34 +26,40 @@ void correlate(int ny, int nx, const float *data, float *result) {
 #pragma omp parallel for
     for (int y = 0; y < ny; y++) {
         double4_t sum = {0, 0, 0, 0};
-        double4_t sum_sq = {0, 0, 0, 0};
         for (int x = 0; x < nx / vec_size; x++) {
             double4_t drow = {data[x * vec_size + 0 + y * nx],
                               data[x * vec_size + 1 + y * nx],
                               data[x * vec_size + 2 + y * nx],
                               data[x * vec_size + 3 + y * nx]};
             sum += drow;
-            sum_sq += drow * drow;
             matrix[x + y * nx_vecs] = drow;
         }
         for (int k = 0; k < nx % vec_size; k++) {
             sum[0] += data[(nx / vec_size) * vec_size + k + y * nx];
-            sum_sq[0] += (double)data[(nx / vec_size) * vec_size + k + y * nx] *
-                         (double)data[(nx / vec_size) * vec_size + k + y * nx];
             matrix[(nx / vec_size) + y * nx_vecs][k] =
                 data[(nx / vec_size) * vec_size + k + y * nx];
         }
         double avg = (sum[0] + sum[1] + sum[2] + sum[3]) / nx;
-        double mag = std::sqrt((sum_sq[0] + sum_sq[1] + sum_sq[2] + sum_sq[3]) -
-                               nx * avg * avg);
         double4_t avg4 = {avg, avg, avg, avg};
-        double4_t mag4 = {mag, mag, mag, mag};
+
+        double4_t sum_sq = {0, 0, 0, 0};
         for (int x = 0; x < nx / vec_size; x++) {
-            matrix[x + y * nx_vecs] = (matrix[x + y * nx_vecs] - avg4) / mag4;
+            matrix[x + y * nx_vecs] -= avg4;
+            sum_sq += matrix[x + y * nx_vecs] * matrix[x + y * nx_vecs];
         }
         for (int k = 0; k < nx % vec_size; k++) {
-            matrix[(nx / vec_size) + y * nx_vecs][k] =
-                (matrix[(nx / vec_size) + y * nx_vecs][k] - avg) / mag;
+            matrix[(nx / vec_size) + y * nx_vecs][k] -= avg;
+            sum_sq[0] += matrix[(nx / vec_size) + y * nx_vecs][k] *
+                         matrix[(nx / vec_size) + y * nx_vecs][k];
+        }
+        double mag = std::sqrt(sum_sq[0] + sum_sq[1] + sum_sq[2] + sum_sq[3]);
+        double4_t mag4 = {mag, mag, mag, mag};
+
+        for (int x = 0; x < nx / vec_size; x++) {
+            matrix[x + y * nx_vecs] /= mag4;
+        }
+        for (int k = 0; k < nx % vec_size; k++) {
+            matrix[(nx / vec_size) + y * nx_vecs][k] /= mag;
         }
     }
 
