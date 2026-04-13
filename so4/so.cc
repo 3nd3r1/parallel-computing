@@ -43,7 +43,7 @@ void merge(data_t *data, int l, int m, int r) {
 }
 
 void mergeSort(data_t *data, int l, int r) {
-    if (r - l < 100000) {
+    if (r - l < 1000000) {
         std::sort(data + l, data + r + 1);
         return;
     }
