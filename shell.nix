@@ -1,5 +1,5 @@
 {
-  pkgs ? import <nixpkgs> { },
+  pkgs ? import <nixpkgs> { config.allowUnfree = true; },
 }:
 
 with pkgs;
@@ -9,5 +9,7 @@ mkShell {
     gcc
     llvmPackages.openmp
     clang-tools
+    cudaPackages.cudatoolkit
   ];
+  CUDA_PATH = "${cudaPackages.cudatoolkit}";
 }
