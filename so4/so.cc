@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <omp.h>
 #include <vector>
 
 using std::vector;
@@ -41,13 +43,24 @@ void merge(data_t *data, int l, int m, int r) {
 }
 
 void mergeSort(data_t *data, int l, int r) {
-    if (l >= r)
+    if (r - l < 100000) {
+        std::sort(data + l, data + r + 1);
         return;
+    }
 
     int m = l + (r - l) / 2;
+#pragma omp task
     mergeSort(data, l, m);
+#pragma omp task
     mergeSort(data, m + 1, r);
+#pragma omp taskwait
     merge(data, l, m, r);
 }
 
-void psort(int n, data_t *data) { mergeSort(data, 0, n - 1); }
+void psort(int n, data_t *data) {
+#pragma omp parallel
+#pragma omp single
+    {
+        mergeSort(data, 0, n - 1);
+    }
+}
