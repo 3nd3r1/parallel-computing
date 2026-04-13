@@ -1,9 +1,53 @@
-#include <algorithm>
+#include <vector>
+
+using std::vector;
 
 typedef unsigned long long data_t;
 
-void psort(int n, data_t *data) {
-    // FIXME: Implement a more efficient parallel sorting algorithm for the CPU,
-    // using the basic idea of merge sort.
-    std::sort(data, data + n);
+void merge(data_t *data, int l, int m, int r) {
+    int nl = m - l + 1;
+    int nr = r - m;
+
+    vector<data_t> L(nl), R(nr);
+
+    for (int i = 0; i < nl; i++)
+        L[i] = data[l + i];
+    for (int j = 0; j < nr; j++)
+        R[j] = data[m + 1 + j];
+
+    int i = 0, j = 0;
+    int k = l;
+    while (i < nl && j < nr) {
+        if (L[i] <= R[j]) {
+            data[k] = L[i];
+            i++;
+        } else {
+            data[k] = R[j];
+            j++;
+        }
+        k++;
+    }
+
+    while (i < nl) {
+        data[k] = L[i];
+        i++;
+        k++;
+    }
+    while (j < nr) {
+        data[k] = R[j];
+        j++;
+        k++;
+    }
 }
+
+void mergeSort(data_t *data, int l, int r) {
+    if (l >= r)
+        return;
+
+    int m = l + (r - l) / 2;
+    mergeSort(data, l, m);
+    mergeSort(data, m + 1, r);
+    merge(data, l, m, r);
+}
+
+void psort(int n, data_t *data) { mergeSort(data, 0, n - 1); }
