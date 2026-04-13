@@ -63,11 +63,12 @@ void correlate(int ny, int nx, const float *data, float *result) {
     CHECK(cudaMalloc((void **)&matrixGPU, ny * nx * sizeof(double)));
     float *resultGPU = NULL;
     CHECK(cudaMalloc((void **)&resultGPU, ny * ny * sizeof(float)));
+    CHECK(cudaMemset(resultGPU, 0, ny * ny * sizeof(float)));
     CHECK(cudaMemcpy(matrixGPU, matrix, ny * nx * sizeof(double),
                      cudaMemcpyHostToDevice));
 
     dim3 dimBlock(16, 16);
-    dim3 dimGrid(divup(nx, dimBlock.x), divup(ny, dimBlock.y));
+    dim3 dimGrid(divup(ny, dimBlock.x), divup(ny, dimBlock.y));
     mykernel<<<dimGrid, dimBlock>>>(resultGPU, matrixGPU, nx, ny);
     CHECK(cudaGetLastError());
 
