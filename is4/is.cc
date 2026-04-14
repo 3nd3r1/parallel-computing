@@ -1,3 +1,4 @@
+#include <omp.h>
 #include <vector>
 
 using std::vector;
@@ -43,10 +44,13 @@ Result segment(int ny, int nx, const float *data) {
         }
     }
 
-    Result result = Result{0, 0, 0, 0, {0, 0, 0}, {0, 0, 0}};
-    double min_tsse = 1e9;
+    Result global_result = Result{0, 0, 0, 0, {0, 0, 0}, {0, 0, 0}};
+    double global_min_tsse = 1e9;
 
+#pragma omp parallel for schedule(dynamic, 1)
     for (int y0 = 0; y0 < ny; y0++) {
+        double min_tsse = 1e9;
+        Result result = Result{0, 0, 0, 0, {0, 0, 0}, {0, 0, 0}};
         for (int x0 = 0; x0 < nx; x0++) {
             for (int y1 = y0 + 1; y1 <= ny; y1++) {
                 for (int x1 = x0 + 1; x1 <= nx; x1++) {
@@ -100,7 +104,14 @@ Result segment(int ny, int nx, const float *data) {
                 }
             }
         }
+#pragma omp critical
+        {
+            if (min_tsse < global_min_tsse) {
+                global_min_tsse = min_tsse;
+                global_result = result;
+            }
+        }
     }
 
-    return result;
+    return global_result;
 }
