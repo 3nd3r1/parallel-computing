@@ -47,12 +47,25 @@ Result segment(int ny, int nx, const float *data) {
     Result global_result = Result{0, 0, 0, 0, {0, 0, 0}, {0, 0, 0}};
     double global_min_tsse = 1e9;
 
+    double4_t total_s = pref_s[nx + nxp * ny];
+    double4_t total_ss = pref_ss[nx + nxp * ny];
+
 #pragma omp parallel for schedule(dynamic, 1)
     for (int y0 = 0; y0 < ny; y0++) {
         double min_tsse = 1e9;
         Result result = Result{0, 0, 0, 0, {0, 0, 0}, {0, 0, 0}};
-        for (int x0 = 0; x0 < nx; x0++) {
-            for (int y1 = y0 + 1; y1 <= ny; y1++) {
+        vector<double4_t> diff_s(nxp);
+        vector<double4_t> diff_ss(nxp);
+        for (int y1 = y0 + 1; y1 <= ny; y1++) {
+            int iy0 = nxp * y0;
+            int iy1 = nxp * y1;
+            for (int x = 0; x <= nx; x++) {
+                diff_s[x] = pref_s[x + iy1] - pref_s[x + iy0];
+                diff_ss[x] = pref_ss[x + iy1] - pref_ss[x + iy0];
+            }
+            for (int x0 = 0; x0 < nx; x0++) {
+                double4_t d_x0 = diff_s[x0];
+                double4_t dd_x0 = diff_ss[x0];
                 for (int x1 = x0 + 1; x1 <= nx; x1++) {
                     double inside_n = (double)(y1 - y0) * (x1 - x0);
                     double outside_n = (double)(nx * ny) - inside_n;
@@ -65,17 +78,11 @@ Result segment(int ny, int nx, const float *data) {
                     double4_t outside_n4 = {outside_n, outside_n, outside_n,
                                             outside_n};
 
-                    double4_t inside_sum =
-                        pref_s[x1 + nxp * y1] - pref_s[x1 + nxp * y0] -
-                        pref_s[x0 + nxp * y1] + pref_s[x0 + nxp * y0];
+                    double4_t inside_sum = diff_s[x1] - d_x0;
+                    double4_t inside_sum_sq = diff_ss[x1] - dd_x0;
 
-                    double4_t inside_sum_sq =
-                        pref_ss[x1 + nxp * y1] - pref_ss[x1 + nxp * y0] -
-                        pref_ss[x0 + nxp * y1] + pref_ss[x0 + nxp * y0];
-
-                    double4_t outside_sum = pref_s[nx + nxp * ny] - inside_sum;
-                    double4_t outside_sum_sq =
-                        pref_ss[nx + nxp * ny] - inside_sum_sq;
+                    double4_t outside_sum = total_s - inside_sum;
+                    double4_t outside_sum_sq = total_ss - inside_sum_sq;
 
                     double4_t inner = inside_sum / inside_n;
                     double4_t outer = outside_sum / outside_n;
