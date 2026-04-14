@@ -90,6 +90,9 @@ Result segment(int ny, int nx, const float *data) {
                                   inside_sse[2] + outside_sse[0] +
                                   outside_sse[1] + outside_sse[2];
 
+                    if (tsse > global_min_tsse)
+                        continue;
+
                     if (tsse < min_tsse) {
                         min_tsse = tsse;
                         result = Result{
