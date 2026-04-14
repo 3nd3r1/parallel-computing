@@ -19,22 +19,24 @@ This is the function you need to implement. Quick reference:
 - input: data[c + 3 * x + 3 * nx * y]
 */
 Result segment(int ny, int nx, const float *data) {
-    vector<vector<vector<double>>> pref_s(
-        ny + 1, vector<vector<double>>(nx + 1, std::vector<double>(3, 0.0)));
-    vector<vector<vector<double>>> pref_ss(
-        ny + 1, vector<vector<double>>(nx + 1, std::vector<double>(3, 0.0)));
+    vector<double> pref_s((ny + 1) * (nx + 1) * 3, 0.0);
+    vector<double> pref_ss((ny + 1) * (nx + 1) * 3, 0.0);
 
+    int stride = 3 * (nx + 1);
     for (int y = 0; y < ny; y++) {
         for (int x = 0; x < nx; x++) {
             for (int c = 0; c < 3; c++) {
-                pref_s[y + 1][x + 1][c] = data[c + 3 * x + 3 * nx * y] +
-                                          pref_s[y][x + 1][c] +
-                                          pref_s[y + 1][x][c] - pref_s[y][x][c];
-                pref_ss[y + 1][x + 1][c] = (data[c + 3 * x + 3 * nx * y] *
-                                            data[c + 3 * x + 3 * nx * y]) +
-                                           pref_ss[y][x + 1][c] +
-                                           pref_ss[y + 1][x][c] -
-                                           pref_ss[y][x][c];
+                pref_s[c + 3 * (x + 1) + stride * (y + 1)] =
+                    data[c + 3 * x + 3 * nx * y] +
+                    pref_s[c + 3 * (x + 1) + stride * y] +
+                    pref_s[c + 3 * x + stride * (y + 1)] -
+                    pref_s[c + 3 * x + stride * y];
+                pref_ss[c + 3 * (x + 1) + stride * (y + 1)] =
+                    (data[c + 3 * x + 3 * nx * y] *
+                     data[c + 3 * x + 3 * nx * y]) +
+                    pref_ss[c + 3 * (x + 1) + stride * y] +
+                    pref_ss[c + 3 * x + stride * (y + 1)] -
+                    pref_ss[c + 3 * x + stride * y];
             }
         }
     }
@@ -57,16 +59,20 @@ Result segment(int ny, int nx, const float *data) {
                         continue;
 
                     for (int c = 0; c < 3; c++) {
-                        double inside_sum =
-                            pref_s[y1][x1][c] - pref_s[y0][x1][c] -
-                            pref_s[y1][x0][c] + pref_s[y0][x0][c];
+                        double inside_sum = pref_s[c + 3 * x1 + stride * y1] -
+                                            pref_s[c + 3 * x1 + stride * y0] -
+                                            pref_s[c + 3 * x0 + stride * y1] +
+                                            pref_s[c + 3 * x0 + stride * y0];
                         double inside_sum_sq =
-                            pref_ss[y1][x1][c] - pref_ss[y0][x1][c] -
-                            pref_ss[y1][x0][c] + pref_ss[y0][x0][c];
+                            pref_ss[c + 3 * x1 + stride * y1] -
+                            pref_ss[c + 3 * x1 + stride * y0] -
+                            pref_ss[c + 3 * x0 + stride * y1] +
+                            pref_ss[c + 3 * x0 + stride * y0];
 
-                        double outside_sum = pref_s[ny][nx][c] - inside_sum;
+                        double outside_sum =
+                            pref_s[c + 3 * nx + stride * ny] - inside_sum;
                         double outside_sum_sq =
-                            pref_ss[ny][nx][c] - inside_sum_sq;
+                            pref_ss[c + 3 * nx + stride * ny] - inside_sum_sq;
 
                         inner[c] = (float)(inside_sum / inside_n);
                         outer[c] = (float)(outside_sum / outside_n);
