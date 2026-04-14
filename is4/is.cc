@@ -11,6 +11,8 @@ struct Result {
     float inner[3];
 };
 
+typedef double double4_t __attribute__((vector_size(4 * sizeof(double))));
+
 /*
 This is the function you need to implement. Quick reference:
 - x coordinates: 0 <= x < nx
@@ -19,24 +21,24 @@ This is the function you need to implement. Quick reference:
 - input: data[c + 3 * x + 3 * nx * y]
 */
 Result segment(int ny, int nx, const float *data) {
-    vector<double> pref_s((ny + 1) * (nx + 1) * 3, 0.0);
-    vector<double> pref_ss((ny + 1) * (nx + 1) * 3, 0.0);
+    int nxp = nx + 1;
+    int nyp = ny + 1;
 
-    int stride = 3 * (nx + 1);
+    vector<double4_t> pref_s(nyp * nxp, double4_t{0, 0, 0, 0});
+    vector<double4_t> pref_ss(nyp * nxp, double4_t{0, 0, 0, 0});
+
     for (int y = 0; y < ny; y++) {
         for (int x = 0; x < nx; x++) {
             for (int c = 0; c < 3; c++) {
-                pref_s[c + 3 * (x + 1) + stride * (y + 1)] =
+                pref_s[(x + 1) + nxp * (y + 1)][c] =
                     data[c + 3 * x + 3 * nx * y] +
-                    pref_s[c + 3 * (x + 1) + stride * y] +
-                    pref_s[c + 3 * x + stride * (y + 1)] -
-                    pref_s[c + 3 * x + stride * y];
-                pref_ss[c + 3 * (x + 1) + stride * (y + 1)] =
+                    pref_s[(x + 1) + nxp * y][c] +
+                    pref_s[x + nxp * (y + 1)][c] - pref_s[x + nxp * y][c];
+                pref_ss[(x + 1) + nxp * (y + 1)][c] =
                     (data[c + 3 * x + 3 * nx * y] *
                      data[c + 3 * x + 3 * nx * y]) +
-                    pref_ss[c + 3 * (x + 1) + stride * y] +
-                    pref_ss[c + 3 * x + stride * (y + 1)] -
-                    pref_ss[c + 3 * x + stride * y];
+                    pref_ss[(x + 1) + nxp * y][c] +
+                    pref_ss[x + nxp * (y + 1)][c] - pref_ss[x + nxp * y][c];
             }
         }
     }
@@ -48,52 +50,52 @@ Result segment(int ny, int nx, const float *data) {
         for (int x0 = 0; x0 < nx; x0++) {
             for (int y1 = y0 + 1; y1 <= ny; y1++) {
                 for (int x1 = x0 + 1; x1 <= nx; x1++) {
-                    double tsse = 0;
-                    float outer[3] = {0, 0, 0};
-                    float inner[3] = {0, 0, 0};
-
                     double inside_n = (double)(y1 - y0) * (x1 - x0);
                     double outside_n = (double)(nx * ny) - inside_n;
 
                     if (outside_n <= 0)
                         continue;
 
-                    for (int c = 0; c < 3; c++) {
-                        double inside_sum = pref_s[c + 3 * x1 + stride * y1] -
-                                            pref_s[c + 3 * x1 + stride * y0] -
-                                            pref_s[c + 3 * x0 + stride * y1] +
-                                            pref_s[c + 3 * x0 + stride * y0];
-                        double inside_sum_sq =
-                            pref_ss[c + 3 * x1 + stride * y1] -
-                            pref_ss[c + 3 * x1 + stride * y0] -
-                            pref_ss[c + 3 * x0 + stride * y1] +
-                            pref_ss[c + 3 * x0 + stride * y0];
+                    double4_t inside_n4 = {inside_n, inside_n, inside_n,
+                                           inside_n};
+                    double4_t outside_n4 = {outside_n, outside_n, outside_n,
+                                            outside_n};
 
-                        double outside_sum =
-                            pref_s[c + 3 * nx + stride * ny] - inside_sum;
-                        double outside_sum_sq =
-                            pref_ss[c + 3 * nx + stride * ny] - inside_sum_sq;
+                    double4_t inside_sum =
+                        pref_s[x1 + nxp * y1] - pref_s[x1 + nxp * y0] -
+                        pref_s[x0 + nxp * y1] + pref_s[x0 + nxp * y0];
 
-                        inner[c] = (float)(inside_sum / inside_n);
-                        outer[c] = (float)(outside_sum / outside_n);
+                    double4_t inside_sum_sq =
+                        pref_ss[x1 + nxp * y1] - pref_ss[x1 + nxp * y0] -
+                        pref_ss[x0 + nxp * y1] + pref_ss[x0 + nxp * y0];
 
-                        double inside_sse =
-                            inside_sum_sq -
-                            ((inside_sum * inside_sum) / inside_n);
-                        double outside_sse =
-                            outside_sum_sq -
-                            ((outside_sum * outside_sum) / outside_n);
+                    double4_t outside_sum = pref_s[nx + nxp * ny] - inside_sum;
+                    double4_t outside_sum_sq =
+                        pref_ss[nx + nxp * ny] - inside_sum_sq;
 
-                        tsse += inside_sse + outside_sse;
-                    }
+                    double4_t inner = inside_sum / inside_n;
+                    double4_t outer = outside_sum / outside_n;
+
+                    double4_t inside_sse =
+                        inside_sum_sq - (inside_sum * inside_sum) / inside_n4;
+                    double4_t outside_sse =
+                        outside_sum_sq -
+                        (outside_sum * outside_sum) / outside_n4;
+
+                    double tsse = inside_sse[0] + inside_sse[1] +
+                                  inside_sse[2] + outside_sse[0] +
+                                  outside_sse[1] + outside_sse[2];
+
                     if (tsse < min_tsse) {
                         min_tsse = tsse;
-                        result = Result{y0,
-                                        x0,
-                                        y1,
-                                        x1,
-                                        {outer[0], outer[1], outer[2]},
-                                        {inner[0], inner[1], inner[2]}};
+                        result = Result{
+                            y0,
+                            x0,
+                            y1,
+                            x1,
+                            {(float)outer[0], (float)outer[1], (float)outer[2]},
+                            {(float)inner[0], (float)inner[1],
+                             (float)inner[2]}};
                     }
                 }
             }
