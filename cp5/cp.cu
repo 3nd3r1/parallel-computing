@@ -57,10 +57,10 @@ __global__ void correlate_kernel(float *result, float *matrix, int nx, int ny) {
             tile_i[threadIdx.x][threadIdx.y] = 0;
         }
 
-        if (j < ny && t + threadIdx.y < nx) {
-            tile_j[threadIdx.x][threadIdx.y] = matrix[j * nx + t + threadIdx.y];
+        if (j < ny && t + threadIdx.x < nx) {
+            tile_j[threadIdx.y][threadIdx.x] = matrix[j * nx + t + threadIdx.x];
         } else {
-            tile_j[threadIdx.x][threadIdx.y] = 0;
+            tile_j[threadIdx.y][threadIdx.x] = 0;
         }
 
         __syncthreads();
