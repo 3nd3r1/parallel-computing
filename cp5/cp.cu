@@ -40,40 +40,18 @@ __global__ void normalize_kernel(float *matrix, int nx, int ny) {
     }
 }
 
-#define TILE 16
-
 __global__ void correlate_kernel(float *result, float *matrix, int nx, int ny) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
 
-    __shared__ float tile_i[TILE][TILE];
-    __shared__ float tile_j[TILE][TILE];
+    if (i >= ny || j < i || j >= ny)
+        return;
 
     float val = 0;
-    for (int t = 0; t < nx; t += TILE) {
-        if (i < ny && t + threadIdx.y < nx) {
-            tile_i[threadIdx.x][threadIdx.y] = matrix[i * nx + t + threadIdx.y];
-        } else {
-            tile_i[threadIdx.x][threadIdx.y] = 0;
-        }
-
-        if (j < ny && t + threadIdx.x < nx) {
-            tile_j[threadIdx.y][threadIdx.x] = matrix[j * nx + t + threadIdx.x];
-        } else {
-            tile_j[threadIdx.y][threadIdx.x] = 0;
-        }
-
-        __syncthreads();
-
-        for (int k = 0; k < TILE; k++) {
-            val += tile_i[threadIdx.x][k] * tile_j[threadIdx.y][k];
-        }
-
-        __syncthreads();
+    for (int k = 0; k < nx; k++) {
+        val += matrix[i * nx + k] * matrix[j * nx + k];
     }
-
-    if (i < ny && j < ny && i >= j)
-        result[i + j * ny] = val;
+    result[i * ny + j] = val;
 }
 
 /*
