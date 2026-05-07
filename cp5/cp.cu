@@ -59,6 +59,9 @@ __global__ void correlate_kernel(float *result, float *matrix, int nx, int ny,
     int ic = blockIdx.x;
     int jc = blockIdx.y;
 
+    if (ic > jc)
+        return;
+
     float val[8][8];
     for (int i = 0; i < 8; i++) {
         for (int j = 0; j < 8; j++) {
@@ -87,7 +90,7 @@ __global__ void correlate_kernel(float *result, float *matrix, int nx, int ny,
         for (int jb = 0; jb < 8; ++jb) {
             int i = ic * 64 + ib * 8 + ia;
             int j = jc * 64 + jb * 8 + ja;
-            if (i < ny && j < ny) {
+            if (i < ny && j < ny && j >= i) {
                 result[ny * i + j] = val[ib][jb];
             }
         }
