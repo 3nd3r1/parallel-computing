@@ -40,7 +40,19 @@ __global__ void normalize_kernel(float *matrix, int nx, int ny) {
     }
 }
 
-__global__ void correlate_kernel(float *result, float *matrix, int nx, int ny) {
+__global__ void transpose_kernel(float *matrix, float *matrix_t, int nx,
+                                 int ny) {
+    int y = blockIdx.x * blockDim.x + threadIdx.x;
+    if (y >= ny)
+        return;
+
+    for (int x = 0; x < nx; x++) {
+        matrix_t[x * ny + y] = matrix[y * nx + x];
+    }
+}
+
+__global__ void correlate_kernel(float *result, float *matrix, float *matrix_t,
+                                 int nx, int ny) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -49,7 +61,7 @@ __global__ void correlate_kernel(float *result, float *matrix, int nx, int ny) {
 
     float val = 0;
     for (int k = 0; k < nx; k++) {
-        val += matrix[i * nx + k] * matrix[j * nx + k];
+        val += matrix_t[k * ny + i] * matrix[j * nx + k];
     }
     result[i * ny + j] = val;
 }
@@ -71,17 +83,25 @@ void correlate(int ny, int nx, const float *data, float *result) {
 
     normalize_kernel<<<divup(ny, 256), 256>>>(matrixGPU, nx, ny);
 
+    float *matrixTGPU = NULL;
+    CHECK(cudaMalloc((void **)&matrixTGPU, nx * ny * sizeof(float)));
+    CHECK(cudaMemset(matrixTGPU, 0, ny * nx * sizeof(float)));
+
+    transpose_kernel<<<divup(ny, 256), 256>>>(matrixGPU, matrixTGPU, nx, ny);
+
     float *resultGPU = NULL;
     CHECK(cudaMalloc((void **)&resultGPU, ny * ny * sizeof(float)));
     CHECK(cudaMemset(resultGPU, 0, ny * ny * sizeof(float)));
 
     dim3 dimBlock(16, 16);
     dim3 dimGrid(divup(ny, dimBlock.x), divup(ny, dimBlock.y));
-    correlate_kernel<<<dimGrid, dimBlock>>>(resultGPU, matrixGPU, nx, ny);
+    correlate_kernel<<<dimGrid, dimBlock>>>(resultGPU, matrixGPU, matrixTGPU,
+                                            nx, ny);
 
     CHECK(cudaGetLastError());
     CHECK(cudaMemcpy(result, resultGPU, ny * ny * sizeof(float),
                      cudaMemcpyDeviceToHost));
     CHECK(cudaFree(matrixGPU));
+    CHECK(cudaFree(matrixTGPU));
     CHECK(cudaFree(resultGPU));
 }
