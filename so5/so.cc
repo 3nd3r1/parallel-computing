@@ -4,7 +4,16 @@
 typedef unsigned long long data_t;
 
 int partition(data_t *data, int l, int r) {
+    int mid = l + (r - l) / 2;
+    if (data[mid] < data[l])
+        std::swap(data[mid], data[l]);
+    if (data[r] < data[l])
+        std::swap(data[r], data[l]);
+    if (data[mid] < data[r])
+        std::swap(data[mid], data[r]);
+
     data_t pivot = data[r];
+
     int i = l - 1;
 
     for (int j = l; j <= r; j++) {
@@ -24,13 +33,12 @@ void quickSort(data_t *data, int l, int r) {
         return;
     }
 
-    int pi;
-#pragma omp task
-    pi = partition(data, l, r);
+    int pi = partition(data, l, r);
 #pragma omp task
     quickSort(data, l, pi - 1);
-#pragma omp taskwait
+#pragma omp task
     quickSort(data, pi + 1, r);
+#pragma omp taskwait
 }
 
 void psort(int n, data_t *data) {
