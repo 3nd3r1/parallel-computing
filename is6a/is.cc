@@ -26,17 +26,12 @@ Result segment(int ny, int nx, const float *data) {
     int nyp = ny + 1;
 
     vector<float> pref_s(nyp * nxp, 0);
-    vector<float> pref_ss(nyp * nxp, 0);
 
     for (int y = 0; y < ny; y++) {
         for (int x = 0; x < nx; x++) {
             pref_s[(x + 1) + nxp * (y + 1)] =
                 data[3 * x + 3 * nx * y] + pref_s[(x + 1) + nxp * y] +
                 pref_s[x + nxp * (y + 1)] - pref_s[x + nxp * y];
-            pref_ss[(x + 1) + nxp * (y + 1)] =
-                (data[3 * x + 3 * nx * y] * data[3 * x + 3 * nx * y]) +
-                pref_ss[(x + 1) + nxp * y] + pref_ss[x + nxp * (y + 1)] -
-                pref_ss[x + nxp * y];
         }
     }
 
@@ -44,14 +39,12 @@ Result segment(int ny, int nx, const float *data) {
     double global_min_tsse = 1e9;
 
     float total_s = pref_s[nx + nxp * ny];
-    float total_ss = pref_ss[nx + nxp * ny];
 
 #pragma omp parallel for schedule(dynamic, 1)
     for (int y0 = 0; y0 < ny; y0++) {
         float min_tsse = 1e9;
         Result result = Result{0, 0, 0, 0, {0, 0, 0}, {0, 0, 0}};
         vector<float> diff_s(nxp);
-        vector<float> diff_ss(nxp);
         vector<float> inv_in(nxp);
         vector<float> inv_out(nxp);
         for (int y1 = y0 + 1; y1 <= ny; y1++) {
@@ -59,7 +52,6 @@ Result segment(int ny, int nx, const float *data) {
             int iy1 = nxp * y1;
             for (int x = 0; x <= nx; x++) {
                 diff_s[x] = pref_s[x + iy1] - pref_s[x + iy0];
-                diff_ss[x] = pref_ss[x + iy1] - pref_ss[x + iy0];
             }
             float row_n = (y1 - y0);
             float total_nd = (nx * ny);
@@ -71,7 +63,6 @@ Result segment(int ny, int nx, const float *data) {
             }
             for (int x0 = 0; x0 < nx; x0++) {
                 float d_x0 = diff_s[x0];
-                float dd_x0 = diff_ss[x0];
                 for (int x1 = x0 + 1; x1 <= nx; x1++) {
                     int k = x1 - x0;
                     float inv_i = inv_in[k];
@@ -80,15 +71,13 @@ Result segment(int ny, int nx, const float *data) {
                         continue;
 
                     float inside_sum = diff_s[x1] - d_x0;
-                    float inside_sum_sq = diff_ss[x1] - dd_x0;
 
                     float outside_sum = total_s - inside_sum;
-                    float outside_sum_sq = total_ss - inside_sum_sq;
 
                     float inside_sse =
-                        inside_sum_sq - inside_sum * inside_sum * inv_i;
+                        inside_sum - inside_sum * inside_sum * inv_i;
                     float outside_sse =
-                        outside_sum_sq - outside_sum * outside_sum * inv_o;
+                        outside_sum - outside_sum * outside_sum * inv_o;
 
                     float tsse = inside_sse + outside_sse;
 
