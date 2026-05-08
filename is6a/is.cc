@@ -25,7 +25,7 @@ Result segment(int ny, int nx, const float *data) {
     int nxp = nx + 1;
     int nyp = ny + 1;
 
-    vector<float> pref_s(nyp * nxp, 0);
+    vector<int> pref_s(nyp * nxp, 0);
 
     for (int y = 0; y < ny; y++) {
         for (int x = 0; x < nx; x++) {
@@ -38,7 +38,7 @@ Result segment(int ny, int nx, const float *data) {
     Result global_result = Result{0, 0, 0, 0, {0, 0, 0}, {0, 0, 0}};
     double global_min_tsse = 1e9;
 
-    float total_s = pref_s[nx + nxp * ny];
+    int total_s = pref_s[nx + nxp * ny];
 
 #pragma omp parallel for schedule(dynamic, 1)
     for (int y0 = 0; y0 < ny; y0++) {
@@ -71,13 +71,10 @@ Result segment(int ny, int nx, const float *data) {
                         continue;
 
                     float inside_sum = diff_s[x1] - d_x0;
-
                     float outside_sum = total_s - inside_sum;
 
-                    float inside_sse =
-                        inside_sum - inside_sum * inside_sum * inv_i;
-                    float outside_sse =
-                        outside_sum - outside_sum * outside_sum * inv_o;
+                    float inside_sse = inside_sum * (1 - inside_sum * inv_i);
+                    float outside_sse = outside_sum * (1 - outside_sum * inv_o);
 
                     float tsse = inside_sse + outside_sse;
 
