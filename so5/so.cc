@@ -34,11 +34,15 @@ void quickSort(data_t *data, int l, int r, int depth = 0) {
     }
 
     int pi = partition(data, l, r);
+    if (pi - l <= r - pi) {
 #pragma omp task
-    quickSort(data, l, pi - 1, depth + 1);
+        quickSort(data, l, pi - 1, depth + 1);
+        quickSort(data, pi + 1, r, depth + 1);
+    } else {
 #pragma omp task
-    quickSort(data, pi + 1, r, depth + 1);
-#pragma omp taskwait
+        quickSort(data, pi + 1, r, depth + 1);
+        quickSort(data, l, pi - 1, depth + 1);
+    }
 }
 
 void psort(int n, data_t *data) {
