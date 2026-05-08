@@ -36,7 +36,7 @@ Result segment(int ny, int nx, const float *data) {
     }
 
     Result global_result = Result{0, 0, 0, 0, {0, 0, 0}, {0, 0, 0}};
-    double global_min_tsse = 1e9;
+    float global_min_tsse = 1e9;
 
     int total_s = pref_s[nx + nxp * ny];
 
@@ -44,7 +44,7 @@ Result segment(int ny, int nx, const float *data) {
     for (int y0 = 0; y0 < ny; y0++) {
         float min_tsse = 1e9;
         Result result = Result{0, 0, 0, 0, {0, 0, 0}, {0, 0, 0}};
-        vector<float> diff_s(nxp);
+        vector<int> diff_s(nxp);
         vector<float> inv_in(nxp);
         vector<float> inv_out(nxp);
         for (int y1 = y0 + 1; y1 <= ny; y1++) {
