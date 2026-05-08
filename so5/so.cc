@@ -9,22 +9,23 @@ int partition(data_t *data, int l, int r) {
         std::swap(data[mid], data[l]);
     if (data[r] < data[l])
         std::swap(data[r], data[l]);
-    if (data[mid] < data[r])
-        std::swap(data[mid], data[r]);
+    if (data[r] < data[mid])
+        std::swap(data[r], data[mid]);
+    data_t pivot = data[mid];
+    std::swap(data[mid], data[r - 1]);
 
-    data_t pivot = data[r];
-
-    int i = l - 1;
-
-    for (int j = l; j <= r; j++) {
-        if (data[j] < pivot) {
-            i++;
-            std::swap(data[i], data[j]);
-        }
+    int i = l, j = r - 1;
+    while (true) {
+        while (data[++i] < pivot)
+            ;
+        while (data[--j] > pivot)
+            ;
+        if (i >= j)
+            break;
+        std::swap(data[i], data[j]);
     }
-
-    std::swap(data[i + 1], data[r]);
-    return i + 1;
+    std::swap(data[i], data[r - 1]);
+    return i;
 }
 
 void quickSort(data_t *data, int l, int r, int depth = 0) {
