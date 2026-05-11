@@ -121,7 +121,7 @@ Result segment(int ny, int nx, const float *data) {
                      cudaMemcpyHostToDevice));
 
     {
-        kernel<<<4096, 256>>>(pref_sGPU, nx, ny);
+        kernel<<<16384, 256>>>(pref_sGPU, nx, ny);
         CHECK(cudaGetLastError());
     }
 
