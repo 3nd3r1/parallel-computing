@@ -1,7 +1,8 @@
+#include <algorithm>
 #include <cstdlib>
 #include <cuda_runtime.h>
 #include <iostream>
-
+#include <vector>
 using namespace std;
 
 struct Result {
@@ -13,6 +14,16 @@ struct Result {
     float inner[3];
 };
 
+struct BResult {
+    int y0;
+    int x0;
+    int y1;
+    int x1;
+    float outer;
+    float inner;
+    float tsse;
+};
+
 static inline void check(cudaError_t err, const char *context) {
     if (err != cudaSuccess) {
         std::cerr << "CUDA error: " << context << ": "
@@ -21,89 +32,72 @@ static inline void check(cudaError_t err, const char *context) {
     }
 }
 
-// static inline int divup(int a, int b) { return (a + b - 1) / b; }
-
-// static inline int roundup(int a, int b) { return divup(a, b) * b; }
-
 #define CHECK(x) check(x, #x)
 
-__device__ float min_tsseGPU = INFINITY;
-__device__ Result best_resultGPU;
-__device__ int lockGPU = 0;
-
-__global__ void kernel(int *pref_s, int nx, int ny) {
+__global__ void kernel(int *pref_s, BResult *block_results, int nx, int ny,
+                       long long total) {
     int nxp = nx + 1;
-    int nyp = ny + 1;
 
-    int total = nx * ny * nxp * nyp;
+    long long gid = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+    long long step = (long long)blockDim.x * gridDim.x;
 
-    int gid = blockIdx.x * blockDim.x + threadIdx.x;
-    int step = blockDim.x * gridDim.x;
+    BResult best_result = {0, 0, 0, 0, 0, 0, INFINITY};
 
-    for (int i = gid; i < total; i += step) {
-        int idx = i;
+    for (long long i = gid; i < total; i += step) {
+        long long idx = i;
         int x0 = idx % nx;
         idx /= nx;
         int y0 = idx % ny;
         idx /= ny;
         int x1 = idx % (nx + 1);
         idx /= (nx + 1);
-        int y1 = idx;
+        int y1 = (int)idx;
 
         if (x1 <= x0 || y1 <= y0)
             continue;
 
         int in_n = (y1 - y0) * (x1 - x0);
-        int out_n = (nx * ny) - in_n;
-
-        float inv_i = 1.0 / in_n;
-        float inv_o = (out_n > 0.0) ? 1.0 / out_n : 0.0;
-
-        int inside_sum = pref_s[x1 + nxp * y1] - pref_s[x1 + nxp * y0] -
-                         pref_s[x0 + nxp * y1] + pref_s[x0 + nxp * y0];
-        int outside_sum = pref_s[nx + nxp * ny] - inside_sum;
-
-        float inside_sse = inside_sum * (1 - inside_sum * inv_i);
-        float outside_sse = outside_sum * (1 - outside_sum * inv_o);
-
-        float tsse = inside_sse + outside_sse;
-
-        if (tsse >= min_tsseGPU)
+        int out_n = nx * ny - in_n;
+        if (out_n <= 0)
             continue;
 
-        while (atomicCAS(&lockGPU, 0, 1) != 0) {
-            __syncwarp();
-        };
-        __threadfence();
-        if (tsse < min_tsseGPU) {
-            min_tsseGPU = tsse;
-            best_resultGPU = Result{
-                y0,
-                x0,
-                y1,
-                x1,
-                {outside_sum * inv_o, outside_sum * inv_o, outside_sum * inv_o},
-                {inside_sum * inv_i, inside_sum * inv_i, inside_sum * inv_i},
-            };
-        }
-        __threadfence();
-        atomicExch(&lockGPU, 0);
+        float inv_i = 1.0f / in_n;
+        float inv_o = 1.0f / out_n;
+
+        float inside_sum =
+            (float)(pref_s[x1 + nxp * y1] - pref_s[x1 + nxp * y0] -
+                    pref_s[x0 + nxp * y1] + pref_s[x0 + nxp * y0]);
+        float outside_sum = (float)(pref_s[nx + nxp * ny]) - inside_sum;
+
+        float inside_sse = inside_sum * (1.0f - inside_sum * inv_i);
+        float outside_sse = outside_sum * (1.0f - outside_sum * inv_o);
+        float tsse = inside_sse + outside_sse;
+
+        if (tsse < best_result.tsse)
+            best_result = {
+                y0, x0, y1, x1, outside_sum * inv_o, inside_sum * inv_i, tsse};
     }
+
+    __shared__ BResult sdata[256];
+    int tid = threadIdx.x;
+    sdata[tid] = best_result;
+    __syncthreads();
+
+    for (int s = 128; s > 0; s >>= 1) {
+        if (tid < s && sdata[tid + s].tsse < sdata[tid].tsse)
+            sdata[tid] = sdata[tid + s];
+        __syncthreads();
+    }
+
+    if (tid == 0)
+        block_results[blockIdx.x] = sdata[0];
 }
 
-/*
-This is the function you need to implement. Quick reference:
-- x coordinates: 0 <= x < nx
-- y coordinates: 0 <= y < ny
-- color components: 0 <= c < 3
-- input: data[c + 3 * x + 3 * nx * y]
-*/
 Result segment(int ny, int nx, const float *data) {
     int nxp = nx + 1;
     int nyp = ny + 1;
 
     int *pref_s = new int[nyp * nxp]();
-
     for (int y = 0; y < ny; y++) {
         for (int x = 0; x < nx; x++) {
             pref_s[(x + 1) + nxp * (y + 1)] =
@@ -112,23 +106,40 @@ Result segment(int ny, int nx, const float *data) {
         }
     }
 
-    float inf = INFINITY;
-    CHECK(cudaMemcpyToSymbol(min_tsseGPU, &inf, sizeof(float)));
+    long long total = (long long)nx * ny * (nx + 1) * (ny + 1);
+    int blocks = 4096;
+    int threads = 256;
 
     int *pref_sGPU = NULL;
-    CHECK(cudaMalloc((void **)&pref_sGPU, nxp * nyp * sizeof(int)));
+    CHECK(cudaMalloc(&pref_sGPU, nxp * nyp * sizeof(int)));
     CHECK(cudaMemcpy(pref_sGPU, pref_s, nxp * nyp * sizeof(int),
                      cudaMemcpyHostToDevice));
 
+    BResult *block_resultsGPU = NULL;
+    CHECK(cudaMalloc(&block_resultsGPU, blocks * sizeof(BResult)));
+
     {
-        kernel<<<16384, 256>>>(pref_sGPU, nx, ny);
+        kernel<<<blocks, threads>>>(pref_sGPU, block_resultsGPU, nx, ny, total);
         CHECK(cudaGetLastError());
     }
 
-    Result best_result;
-    CHECK(cudaMemcpyFromSymbol(&best_result, best_resultGPU, sizeof(Result)));
+    std::vector<BResult> winners(blocks);
+    CHECK(cudaMemcpy(winners.data(), block_resultsGPU, blocks * sizeof(BResult),
+                     cudaMemcpyDeviceToHost));
 
-    CHECK(cudaFree(pref_sGPU));
+    auto best = *std::min_element(
+        winners.begin(), winners.end(),
+        [](const BResult &a, const BResult &b) { return a.tsse < b.tsse; });
 
-    return best_result;
+    cudaFree(pref_sGPU);
+    cudaFree(block_resultsGPU);
+
+    return Result{
+        best.y0,
+        best.x0,
+        best.y1,
+        best.x1,
+        {best.outer, best.outer, best.outer},
+        {best.inner, best.inner, best.inner},
+    };
 }
