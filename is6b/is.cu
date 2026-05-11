@@ -41,7 +41,8 @@ static inline int divup(int a, int b) { return (a + b - 1) / b; }
 
 const int BLOCK_SIZE = 16;
 
-__global__ void kernel(int *pref_s, BResult *block_tsse, int nx, int ny) {
+__global__ void kernel(int *pref_s, BResult *block_tsse, int nx, int ny,
+                       int y0) {
     __shared__ BResult sdata[BLOCK_SIZE * BLOCK_SIZE];
 
     int nxp = nx + 1;
@@ -56,8 +57,6 @@ __global__ void kernel(int *pref_s, BResult *block_tsse, int nx, int ny) {
         int idx = gid;
         int x0 = idx % nx;
         idx /= nx;
-        int y0 = idx % ny;
-        idx /= ny;
         int x1 = idx % nxp;
         idx /= nxp;
         int y1 = idx;
@@ -129,7 +128,7 @@ Result segment(int ny, int nx, const float *data) {
         }
     }
 
-    int num_blocks = divup(nx * ny * nxp * nyp, BLOCK_SIZE * BLOCK_SIZE);
+    int num_blocks = divup(nx * nxp * nyp, BLOCK_SIZE * BLOCK_SIZE);
 
     int *pref_sGPU = NULL;
     CHECK(cudaMalloc((void **)&pref_sGPU, nxp * nyp * sizeof(int)));
@@ -139,30 +138,34 @@ Result segment(int ny, int nx, const float *data) {
     BResult *block_tsseGPU = NULL;
     CHECK(cudaMalloc((void **)&block_tsseGPU, num_blocks * sizeof(BResult)));
 
-    {
-        kernel<<<num_blocks, BLOCK_SIZE * BLOCK_SIZE>>>(pref_sGPU,
-                                                        block_tsseGPU, nx, ny);
-        CHECK(cudaGetLastError());
+    BResult global_best = {0, 0, 0, 0, 0, 0, INFINITY};
+
+    for (int y0 = 0; y0 < ny; y0++) {
+        kernel<<<num_blocks, BLOCK_SIZE * BLOCK_SIZE>>>(
+            pref_sGPU, block_tsseGPU, nx, ny, y0);
+
+        std::vector<BResult> winners(num_blocks);
+        cudaMemcpy(winners.data(), block_tsseGPU, num_blocks * sizeof(BResult),
+                   cudaMemcpyDeviceToHost);
+
+        auto best = *std::min_element(
+            winners.begin(), winners.end(),
+            [](const BResult &a, const BResult &b) { return a.tsse < b.tsse; });
+
+        if (best.tsse < global_best.tsse)
+            global_best = best;
     }
-
-    std::vector<BResult> winners(num_blocks);
-    cudaMemcpy(winners.data(), block_tsseGPU, num_blocks * sizeof(BResult),
-               cudaMemcpyDeviceToHost);
-
-    auto best = *std::min_element(
-        winners.begin(), winners.end(),
-        [](const BResult &a, const BResult &b) { return a.tsse < b.tsse; });
 
     delete[] pref_s;
     cudaFree(pref_sGPU);
     cudaFree(block_tsseGPU);
 
     return Result{
-        best.y0,
-        best.x0,
-        best.y1,
-        best.x1,
-        {best.outer, best.outer, best.outer},
-        {best.inner, best.inner, best.inner},
+        global_best.y0,
+        global_best.x0,
+        global_best.y1,
+        global_best.x1,
+        {global_best.outer, global_best.outer, global_best.outer},
+        {global_best.inner, global_best.inner, global_best.inner},
     };
 }
