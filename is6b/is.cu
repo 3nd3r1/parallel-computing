@@ -1,8 +1,6 @@
-#include <algorithm>
 #include <cstdlib>
 #include <cuda_runtime.h>
 #include <iostream>
-#include <vector>
 
 using namespace std;
 
@@ -15,16 +13,6 @@ struct Result {
     float inner[3];
 };
 
-struct BResult {
-    int y0;
-    int x0;
-    int y1;
-    int x1;
-    float outer;
-    float inner;
-    float tsse;
-};
-
 static inline void check(cudaError_t err, const char *context) {
     if (err != cudaSuccess) {
         std::cerr << "CUDA error: " << context << ": "
@@ -33,77 +21,73 @@ static inline void check(cudaError_t err, const char *context) {
     }
 }
 
-static inline int divup(int a, int b) { return (a + b - 1) / b; }
+// static inline int divup(int a, int b) { return (a + b - 1) / b; }
 
 // static inline int roundup(int a, int b) { return divup(a, b) * b; }
 
 #define CHECK(x) check(x, #x)
 
-const int BLOCK_SIZE = 16;
+__device__ float min_tsseGPU = INFINITY;
+__device__ Result best_resultGPU;
+__device__ int lockGPU = 0;
 
-__global__ void kernel(int *pref_s, BResult *block_tsse, int nx, int ny,
-                       int y0) {
-    __shared__ BResult sdata[BLOCK_SIZE * BLOCK_SIZE];
-
+__global__ void kernel(int *pref_s, int nx, int ny) {
     int nxp = nx + 1;
     int nyp = ny + 1;
 
-    int tid = threadIdx.x;
-    int gid = blockIdx.x * (BLOCK_SIZE * BLOCK_SIZE) + tid;
     int total = nx * ny * nxp * nyp;
 
-    BResult result;
-    if (gid < total) {
-        int idx = gid;
+    int gid = blockIdx.x * blockDim.x + threadIdx.x;
+    int step = blockDim.x * gridDim.x;
+
+    for (int i = gid; i < total; i += step) {
+        int idx = i;
         int x0 = idx % nx;
         idx /= nx;
-        int x1 = idx % nxp;
-        idx /= nxp;
+        int y0 = idx % ny;
+        idx /= ny;
+        int x1 = idx % (nx + 1);
+        idx /= (nx + 1);
         int y1 = idx;
 
-        if (x1 <= x0 || y1 <= y0) {
-            result = BResult{
-                y0, x0, y1, x1, 0.0f, 0.0f, INFINITY,
-            };
-        } else {
-            int in_n = (y1 - y0) * (x1 - x0);
-            int out_n = (nx * ny) - in_n;
+        if (x1 <= x0 || y1 <= y0)
+            continue;
 
-            float inv_i = 1.0 / in_n;
-            float inv_o = (out_n > 0.0) ? 1.0 / out_n : 0.0;
+        int in_n = (y1 - y0) * (x1 - x0);
+        int out_n = (nx * ny) - in_n;
 
-            int inside_sum = pref_s[x1 + nxp * y1] - pref_s[x1 + nxp * y0] -
-                             pref_s[x0 + nxp * y1] + pref_s[x0 + nxp * y0];
-            int outside_sum = pref_s[nx + nxp * ny] - inside_sum;
+        float inv_i = 1.0 / in_n;
+        float inv_o = (out_n > 0.0) ? 1.0 / out_n : 0.0;
 
-            float inside_sse = inside_sum * (1 - inside_sum * inv_i);
-            float outside_sse = outside_sum * (1 - outside_sum * inv_o);
+        int inside_sum = pref_s[x1 + nxp * y1] - pref_s[x1 + nxp * y0] -
+                         pref_s[x0 + nxp * y1] + pref_s[x0 + nxp * y0];
+        int outside_sum = pref_s[nx + nxp * ny] - inside_sum;
 
-            float tsse = inside_sse + outside_sse;
-            result = BResult{
-                y0, x0, y1, x1, outside_sum * inv_o, inside_sum * inv_i, tsse,
-            };
-        }
-    } else {
-        result = BResult{
-            0, 0, 0, 0, 0.0f, 0.0f, INFINITY,
+        float inside_sse = inside_sum * (1 - inside_sum * inv_i);
+        float outside_sse = outside_sum * (1 - outside_sum * inv_o);
+
+        float tsse = inside_sse + outside_sse;
+
+        if (tsse >= min_tsseGPU)
+            continue;
+
+        while (atomicCAS(&lockGPU, 0, 1) != 0) {
+            __syncwarp();
         };
-    }
-
-    sdata[tid] = result;
-    __syncthreads();
-
-    for (int s = BLOCK_SIZE * BLOCK_SIZE / 2; s > 0; s >>= 1) {
-        if (tid < s) {
-            if (sdata[tid + s].tsse < sdata[tid].tsse) {
-                sdata[tid] = sdata[tid + s];
-            }
+        __threadfence();
+        if (tsse < min_tsseGPU) {
+            min_tsseGPU = tsse;
+            best_resultGPU = Result{
+                y0,
+                x0,
+                y1,
+                x1,
+                {outside_sum * inv_o, outside_sum * inv_o, outside_sum * inv_o},
+                {inside_sum * inv_i, inside_sum * inv_i, inside_sum * inv_i},
+            };
         }
-        __syncthreads();
-    }
-
-    if (tid == 0) {
-        block_tsse[blockIdx.x] = sdata[0];
+        __threadfence();
+        atomicExch(&lockGPU, 0);
     }
 }
 
@@ -128,44 +112,23 @@ Result segment(int ny, int nx, const float *data) {
         }
     }
 
-    int num_blocks = divup(nx * nxp * nyp, BLOCK_SIZE * BLOCK_SIZE);
+    float inf = INFINITY;
+    CHECK(cudaMemcpyToSymbol(min_tsseGPU, &inf, sizeof(float)));
 
     int *pref_sGPU = NULL;
     CHECK(cudaMalloc((void **)&pref_sGPU, nxp * nyp * sizeof(int)));
     CHECK(cudaMemcpy(pref_sGPU, pref_s, nxp * nyp * sizeof(int),
                      cudaMemcpyHostToDevice));
 
-    BResult *block_tsseGPU = NULL;
-    CHECK(cudaMalloc((void **)&block_tsseGPU, num_blocks * sizeof(BResult)));
-
-    BResult global_best = {0, 0, 0, 0, 0, 0, INFINITY};
-
-    for (int y0 = 0; y0 < ny; y0++) {
-        kernel<<<num_blocks, BLOCK_SIZE * BLOCK_SIZE>>>(
-            pref_sGPU, block_tsseGPU, nx, ny, y0);
-
-        std::vector<BResult> winners(num_blocks);
-        cudaMemcpy(winners.data(), block_tsseGPU, num_blocks * sizeof(BResult),
-                   cudaMemcpyDeviceToHost);
-
-        auto best = *std::min_element(
-            winners.begin(), winners.end(),
-            [](const BResult &a, const BResult &b) { return a.tsse < b.tsse; });
-
-        if (best.tsse < global_best.tsse)
-            global_best = best;
+    {
+        kernel<<<4096, 256>>>(pref_sGPU, nx, ny);
+        CHECK(cudaGetLastError());
     }
 
-    delete[] pref_s;
-    cudaFree(pref_sGPU);
-    cudaFree(block_tsseGPU);
+    Result best_result;
+    CHECK(cudaMemcpyFromSymbol(&best_result, best_resultGPU, sizeof(Result)));
 
-    return Result{
-        global_best.y0,
-        global_best.x0,
-        global_best.y1,
-        global_best.x1,
-        {global_best.outer, global_best.outer, global_best.outer},
-        {global_best.inner, global_best.inner, global_best.inner},
-    };
+    CHECK(cudaFree(pref_sGPU));
+
+    return best_result;
 }
